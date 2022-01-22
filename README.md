@@ -9,6 +9,9 @@
 3. RDS with Redsea:
   - command that works (171k is necessary!): `rtl_fm -M fm -s 171k -f 92.5M  | redsea`
 
+# Useful commands
+ - play just left channel: `play file.wav remix 1 0` (`0 1` for right channel)
+
 # Notes
  - complex signal (e.g. I/Q representation) sampled at Fs can represent frequency range [-Fs/2, Fs/2] - Nyquist holds, because
    each complex sample contains 2 real samples (~doubled sampling rate)
@@ -16,7 +19,7 @@
 # Questions
  - `rtl_fm`:
    - why -s 170k is louder (and cleaner?) than -s 1800k?
-   - possible answer: RTL SDR is set to sample around 1e6/s and downsample(!) to -s - does it handle such large values?
+     - possible answer: RTL SDR is set to sample around 1e6/s and downsample(!) to -s - does it handle such large values?
      - this is effectively bandwidth we take to demodulation too? (170k is reasonable, GQRX uses 160k by default)
    - does it tune to other (close) frequency to avoid DC spike interference?
 
@@ -55,4 +58,9 @@
    - de-emphasis filter?
    - these rectangular simple decimator filters are actually better than `scipy.signal.decimate`???
    - `rtl_fm` uses 170 kHz instead of my 240 kHz for filter bandwidth (note: with 1.8MHz I have used 300 kHz and it yielded even worse results - maybe that's the thing??)
-# SDR
+
+### 18.01.22
+**SSB modulation - figuring stuff out**
+ - pieced together why `I(t)` and Hilbert transform of `Q(t)` give us both USB and LSB - ingenoius
+ - great mistery - why (and how, how well etc.) `rtl_fm` doesn't use Hilbert transform (nor filter, nothing) - just adds/subtracts I and Q?
+

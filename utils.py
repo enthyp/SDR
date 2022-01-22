@@ -1,0 +1,99 @@
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
+from scipy import signal
+from scipy.fftpack import fftshift
+
+
+def filter():
+    from scipy.signal import butter, lfilter
+    cutoff = 20000 / (150000 * 0.5)
+    b, a = butter(10, cutoff, btype='low', analog=False)
+    phase_diff_filt = lfilter(b, a, phase_diff)
+
+
+def welch(samples, sample_rate, nper=1024, fsize=(20, 10)):
+    f, Pxx = signal.welch(samples, sample_rate, nperseg=nper, detrend=lambda x: x)
+    f, Pxx = fftshift(f), fftshift(Pxx)
+    ind = np.argsort(f)
+    f, Pxx = np.take_along_axis(f, ind, axis=0), np.take_along_axis(Pxx, ind, axis=0)
+    
+    plt.figure(figsize=fsize)
+    plt.semilogy(f/1e3, Pxx)
+    plt.xlabel('f [kHz]')
+    plt.ylabel('PSD [Power/Hz]')
+    plt.grid()
+
+    plt.xticks(np.linspace(-sample_rate/2e3, sample_rate/2e3, 31))
+    plt.xlim(-sample_rate/2e3, sample_rate/2e3)
+
+
+def read_iq(f_name):
+    real_sample = np.fromfile(f_name, dtype=np.int8)
+    return real_sample[::2] + 1j * real_sample[1::2]
+
+
+def psd(signal, n_samples, offset=0):
+  signal = signal[offset:offset + n_samples] * np.hamming(n_samples)
+  fft = np.fft.fftshift(np.fft.fft(signal))
+  norm_mag_fft = 1 / n_samples * np.abs(fft)
+  return 20 * np.log10(norm_mag_fft)
+
+
+def plot_psd(psd_samples, fs):
+  f = np.arange(-fs/2, fs/2, fs/len(psd_samples))
+  plt.plot(f, psd_samples)
+  plt.xlabel('Frequency [Hz]')
+  plt.ylabel('PSD [dB]')
+
+
+# find best approximating indices in source for target values
+# so, e.g. find_positions(x-axis labels we want, x-axis values in plot)
+#
+# O(n) because assumes both source and target sorted ascending
+def find_positions(source, target):
+  positions = []
+  cur_target_i = 0
+  cur_approx_i = 0
+
+  i = 0
+  while i < len(source) and cur_target_i < len(target):
+    new_diff = np.abs(target[cur_target_i] - source[i])
+    if new_diff <= np.abs(target[cur_target_i] - source[cur_approx_i]):
+      cur_approx_i = i
+    else:
+      positions.append(cur_approx_i)
+      cur_target_i += 1
+      i -= 1
+    i += 1
+
+  return positions
+
+
+def plot_spectrogram(signal, fs, chunk=1024):
+  t_step = 100
+  rows = [psd(signal[i:i + chunk], chunk) for i in range(0, len(signal), chunk * t_step)]
+
+  fig, ax = plt.subplots(1,1)
+  ax.imshow(np.stack(rows))
+  
+  freq_order = 10 ** round(np.log10(fs / 2))
+  xlabels_pos = np.arange(0, fs / 2, freq_order / 10)
+  xlabels = np.concatenate([-np.flip(xlabels_pos)[:-1], xlabels_pos])
+  freqs = (np.arange(0, chunk) - chunk // 2) * fs / chunk
+  
+  xticks = find_positions(freqs, xlabels)
+  ax.xaxis.set_major_locator(ticker.FixedLocator(xticks))
+  ax.set_xticklabels((xlabels / 1000).astype(int))
+  ax.set_xlabel('Frequency [kHz]')
+  
+  t_max = len(signal) / fs
+  time_order = 10 ** round(np.log10(t_max))
+  ylabels = np.arange(0, t_max, t_max / 10).astype(int)
+  
+  times = np.arange(0, t_max, chunk * t_step / fs)
+  yticks = find_positions(times, ylabels)
+  ax.yaxis.set_major_locator(ticker.FixedLocator(yticks))
+  ax.set_yticklabels(ylabels)
+  ax.set_ylabel('Time [s]')
+
