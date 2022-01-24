@@ -143,6 +143,8 @@ This method requires that there is signal on 1 sideband only - if there is an un
 
 2. **Phasing method**
 
+**TODO**
+
 This method allows extraction of lower and upper sideband separately and allows both being present.
 
 ### Frequency modulation (FM)
@@ -163,3 +165,4 @@ Sources:
  1. [Amplitude modulation - Wikipedia](https://en.wikipedia.org/wiki/Amplitude_modulation#Analysis) - formula and spectrum
  2. *Telecommunication breakdown* 2.3 - AM spectrum from Fourier transform frequency shift property
  3. [SSB demodulation methods](https://www.dsprelated.com/showarticle/176.php)
+ 4. [Complex signals - examples on SSB modulation & demodulation](https://www.mikrocontroller.net/attachment/151612/complex_signals.pdf)
