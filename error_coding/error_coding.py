@@ -64,73 +64,74 @@
 #     i.e. youngest bit of check bits
 #   - ...and I got it? I just didn't shift it by 26, by 0 to 25 so the youngest bit never moved over the right edge...
 #   - so now the only question remaining is: is it possible to make it more efficient than multiplications by the full length matrix?
-#
+#  27.10
+#   - yes, a bit - by considering only non-zero coefficients in length 341 polynomial, for RDS there are 52
+#     (26 originally, we rotate right by 26)
 import numpy as np
 import random as rnd
 from poly_division import divide_mod2
-
 
 input_data = """It's a small step for a man... But a giant leap for the mankind."""
 spec_generator_poly = [1, 0, 0, 1, 1, 1, 0, 1, 1, 0, 1]
 
 # 16 x 26 generator matrix
 spec_generator_matrix = np.array([
-    [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,0,1,1,1,], 
-    [0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,1,1,1,0,0,1,1,1,],
-    [0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,0,1,0,1,1,1,1,],
-    [0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,1,0,1,1,],
-    [0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,1,1,0,1,0,1,1,0,0,1,],
-    [0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,1,1,0,1,1,1,0,0,0,0,],
-    [0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,1,1,0,1,1,1,0,0,0,],
-    [0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,1,1,0,1,1,1,0,0,],
-    [0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,1,1,0,1,1,1,0,],
-    [0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,1,1,0,1,1,1,],
-    [0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,1,0,1,1,0,0,0,1,1,1,],
-    [0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,1,1,1,0,1,1,1,1,1,1,],
-    [0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,1,1,0,0,0,0,0,0,1,1,],
-    [0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,1,1,0,1,0,1,1,1,0,1,],
-    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,1,1,0,1,1,1,0,0,1,0,],
-    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,1,1,0,1,1,1,0,0,1,],
+    [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 1, 1, 1, ],
+    [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 1, 0, 0, 1, 1, 1, ],
+    [0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 1, 0, 1, 1, 1, 1, ],
+    [0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 1, 0, 1, 1, ],
+    [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 1, 0, 1, 1, 0, 0, 1, ],
+    [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 1, 1, 1, 0, 0, 0, 0, ],
+    [0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 1, 1, 1, 0, 0, 0, ],
+    [0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 1, 1, 1, 0, 0, ],
+    [0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 1, 1, 1, 0, ],
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 1, 1, 1, ],
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1, 1, 0, 0, 0, 1, 1, 1, ],
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, ],
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 1, ],
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 0, 1, 0, 1, 1, 1, 0, 1, ],
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 0, 1, 1, 1, 0, 0, 1, 0, ],
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 0, 1, 1, 1, 0, 0, 1, ],
 ])
 
 # 26 x 10 parity check matrix
-spec_parity_check_matrix = np.array([ 
-    [1,0,0,0,0,0,0,0,0,0,], 
-    [0,1,0,0,0,0,0,0,0,0,],
-    [0,0,1,0,0,0,0,0,0,0,],
-    [0,0,0,1,0,0,0,0,0,0,],
-    [0,0,0,0,1,0,0,0,0,0,],
-    [0,0,0,0,0,1,0,0,0,0,],
-    [0,0,0,0,0,0,1,0,0,0,],
-    [0,0,0,0,0,0,0,1,0,0,],
-    [0,0,0,0,0,0,0,0,1,0,],
-    [0,0,0,0,0,0,0,0,0,1,],
-    [1,0,1,1,0,1,1,1,0,0,],
-    [0,1,0,1,1,0,1,1,1,0,],
-    [0,0,1,0,1,1,0,1,1,1,],
-    [1,0,1,0,0,0,0,1,1,1,],
-    [1,1,1,0,0,1,1,1,1,1,],
-    [1,1,0,0,0,1,0,0,1,1,],
-    [1,1,0,1,0,1,0,1,0,1,],
-    [1,1,0,1,1,1,0,1,1,0,],
-    [0,1,1,0,1,1,1,0,1,1,],
-    [1,0,0,0,0,0,0,0,0,1,],
-    [1,1,1,1,0,1,1,1,0,0,],
-    [0,1,1,1,1,0,1,1,1,0,],
-    [0,0,1,1,1,1,0,1,1,1,],
-    [1,0,1,0,1,0,0,1,1,1,],
-    [1,1,1,0,0,0,1,1,1,1,],
-    [1,1,0,0,0,1,1,0,1,1,],
+spec_parity_check_matrix = np.array([
+    [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, ],
+    [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, ],
+    [0, 0, 1, 0, 0, 0, 0, 0, 0, 0, ],
+    [0, 0, 0, 1, 0, 0, 0, 0, 0, 0, ],
+    [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, ],
+    [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, ],
+    [0, 0, 0, 0, 0, 0, 1, 0, 0, 0, ],
+    [0, 0, 0, 0, 0, 0, 0, 1, 0, 0, ],
+    [0, 0, 0, 0, 0, 0, 0, 0, 1, 0, ],
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, ],
+    [1, 0, 1, 1, 0, 1, 1, 1, 0, 0, ],
+    [0, 1, 0, 1, 1, 0, 1, 1, 1, 0, ],
+    [0, 0, 1, 0, 1, 1, 0, 1, 1, 1, ],
+    [1, 0, 1, 0, 0, 0, 0, 1, 1, 1, ],
+    [1, 1, 1, 0, 0, 1, 1, 1, 1, 1, ],
+    [1, 1, 0, 0, 0, 1, 0, 0, 1, 1, ],
+    [1, 1, 0, 1, 0, 1, 0, 1, 0, 1, ],
+    [1, 1, 0, 1, 1, 1, 0, 1, 1, 0, ],
+    [0, 1, 1, 0, 1, 1, 1, 0, 1, 1, ],
+    [1, 0, 0, 0, 0, 0, 0, 0, 0, 1, ],
+    [1, 1, 1, 1, 0, 1, 1, 1, 0, 0, ],
+    [0, 1, 1, 1, 1, 0, 1, 1, 1, 0, ],
+    [0, 0, 1, 1, 1, 1, 0, 1, 1, 1, ],
+    [1, 0, 1, 0, 1, 0, 0, 1, 1, 1, ],
+    [1, 1, 1, 0, 0, 0, 1, 1, 1, 1, ],
+    [1, 1, 0, 0, 0, 1, 1, 0, 1, 1, ],
 ])
 
 
 def utf8_to_blocks(string, block_length=16):
     # return array of 16-bit blocks of data
     string_bytes = string.encode('utf8')
-    
+
     byte_arr = np.frombuffer(string_bytes, dtype=np.uint8)
     bit_arr = np.unpackbits(byte_arr)
-    
+
     # 0 bit padding
     rem = len(bit_arr) % block_length
     if rem != 0:
@@ -138,86 +139,83 @@ def utf8_to_blocks(string, block_length=16):
     return np.reshape(bit_arr, (-1, block_length))
 
 
-# IMPORTANT NOTE:
-#  in RDS standard the leftmost bit represents highest degree polynomial coefficient, the book does the opposite
-def encode(blocks, generator_matrix):
-    # return binary array
-    # note: for cyclic codes this can be implemented as:
-    #  1) left shift input 16-bit word by 10 bits
-    #  2) for this 26-degree polynomial calculate remainder modulo g(x) and set it as last 10 bits (Theorem 8.3, corrolary 2)
-    encoded_blocks = np.matmul(blocks, generator_matrix)
-    return encoded_blocks.flatten() % 2
-
-
-def error_burst(bits, length):
-    ind = rnd.randint(0, len(bits) - length)
-    burst = np.zeros(len(bits))
-    x = np.random.randint(2, size=length)
-    ind = 25
-    burst[ind:ind + length] = np.ones(length)
-    return (bits + burst) % 2
-
-
-def decode(bits, parity_check_matrix, b):
-    # return binary array with errors corrected and check vectors removed
-    n, check_size = parity_check_matrix.shape
-    k = n - check_size
-
-    bit_blocks = np.reshape(bits, (-1, n))
-    
-    corrected_rows = []
-    for row in bit_blocks:
-        for i in range(n):
-            shift_row = np.roll(row, i)
-            syndrome = np.matmul(shift_row, parity_check_matrix) % 2
-
-            if np.all(syndrome == 0) or (syndrome[0] == 1 and np.all(syndrome[b:] == 0)):  # check if syndrome is now a correctable short burst
-                extended_syndrome = np.zeros(n)
-                extended_syndrome[:check_size] = syndrome
-                corrected_rows.append(np.roll((shift_row + extended_syndrome) % 2, -i))
-                break
-        else:
-            print('Failed to find correcting burst')
-
-    bit_blocks_corrected = np.vstack(corrected_rows)
-    return bit_blocks_corrected.astype(np.uint8)[:, check_size:]
-
-
-# for input from RDS crappy reversed generator matrix + handle shortened code in a dumb way to test RDS
-def decode_reverse(bits, parity_check_matrix, n_0, b):
-    # return binary array with errors corrected and check vectors removed
-    n, check_size = parity_check_matrix.shape
-    k = n - check_size
-
-    bit_blocks = np.reshape(bits, (-1, n_0))
-    
-    corrected_rows = []
-    for row in bit_blocks:
-        row = np.pad(row[::-1], (n - n_0, 0), 'constant')
-        for i in range(n_0 + 1):
-            shift_row = np.roll(row, i)
-            syndrome = np.matmul(shift_row, parity_check_matrix) % 2
-
-            if np.all(syndrome == 0) or (syndrome[0] == 1 and np.all(syndrome[b:] == 0)):  # check if syndrome is now a correctable short burst
-                extended_syndrome = np.zeros(n)
-                extended_syndrome[:check_size] = syndrome
-                corrected_row = np.roll((shift_row + extended_syndrome) % 2, -i)
-                if np.all(corrected_row[:n_0] == 0):
-                    # we obtained a word from our shortened code
-                    corrected_rows.append(corrected_row[-n_0:])
-                    break
-        else:
-            print('Failed to find correcting burst')
-
-    bit_blocks_corrected = np.vstack(corrected_rows)[:, ::-1]
-    return bit_blocks_corrected.astype(np.uint8)[:, :-check_size]
-
-
 def blocks_to_utf8(blocks):
     # assemble n-k-bit blocks of data back into a UTF-8 string!
     bit_arr = blocks.flatten()
     byte_arr = np.packbits(bit_arr)
-    return byte_arr.tobytes().decode('utf8').strip('\x00')   # strip optional \x00 padding
+    # for weird block length padding might not be full bytes
+    return byte_arr.tobytes().decode('utf8').strip('\x00')  # strip optional \x00 padding
+
+
+# IMPORTANT NOTE:
+#  in RDS standard the leftmost bit represents the highest degree polynomial coefficient, the book does the opposite
+def encode(blocks, generator_matrix):
+    # return binary array
+    # note: for cyclic codes this can be implemented as:
+    #  1) left shift input 16-bit word by 10 bits
+    #  2) for this 26-degree polynomial calculate remainder modulo g(x) and set it as last 10 bits
+    #     (Theorem 8.3, corollary 2)
+    return np.matmul(blocks, generator_matrix) % 2
+
+
+def error_burst(blocks, length):
+    # TODO: this is just 1 burst
+    block_len = len(blocks[0])
+    bits = blocks.flatten()
+    ind = rnd.randint(0, len(bits) - length)
+    burst = np.zeros(len(bits))
+    burst[ind:ind + length] = np.random.randint(2, size=length)
+    return np.reshape((bits + burst) % 2, (-1, block_len))
+
+
+# decode cyclic code (non-shortened)
+def decode(blocks, parity_check_matrix, n, k, b):
+    # return binary array with errors corrected and check vectors removed
+    corrected_blocks = []
+    for block in blocks:
+        for i in range(n):
+            shift_block = np.roll(block, i)
+            syndrome = np.matmul(shift_block, parity_check_matrix) % 2
+
+            # check if syndrome is now a correctable short burst
+            if np.all(syndrome == 0) or (syndrome[0] == 1 and np.all(syndrome[b:] == 0)):
+                extended_syndrome = np.zeros(n)
+                extended_syndrome[:n - k] = syndrome
+                corrected_blocks.append(np.roll((shift_block + extended_syndrome) % 2, -i))
+                break
+        else:
+            print('Failed to find correcting burst')
+
+    blocks_corrected = np.vstack(corrected_blocks)
+    return blocks_corrected.astype(np.uint8)[:, n - k:]
+
+
+# blocks: [x, n_0], parity_check_matrix: [2 * n_0, n - k (deg gen poly)]
+# parity check matrix is special - it's the modulo remainder matrix but with middle rows removed (corresponding to
+# polynomial coefficients that are always 0 anyway)
+def decode_shortened(blocks, parity_check_matrix, n, n_0, k, b):
+    # return binary array with errors corrected and check vectors removed
+
+    padded_blocks = np.pad(blocks, ((0, 0), (n_0, 0)), 'constant')
+    corrected_rows = []
+    for block in padded_blocks:
+        for i in range(n_0 + 1):
+            shift_block = np.roll(block, i)
+            syndrome = np.matmul(shift_block, parity_check_matrix) % 2
+
+            # check if syndrome is now a correctable short burst
+            if np.all(syndrome == 0) or (syndrome[0] == 1 and np.all(syndrome[b:] == 0)):
+                extended_syndrome = np.zeros(2 * n_0)
+                extended_syndrome[:n - k] = syndrome
+                corrected_block = np.roll((shift_block + extended_syndrome) % 2, -i)
+                if np.all(corrected_block[:n_0] == 0):
+                    # we obtained a word from our shortened code
+                    corrected_rows.append(corrected_block[-n_0:])
+                    break
+        else:
+            print('Failed to find correcting burst')
+
+    return np.vstack(corrected_rows).astype(np.uint8)[:, -n_0 + (n - k):]  # strip zero padding and check bits
 
 
 # k x n
@@ -244,7 +242,7 @@ def build_parity_check_matrix(n, k, generator_polynomial):
         rows.append(remainder)
 
     return np.vstack(rows)
-        
+
 
 def test_correctness(encoder, decoder, k, b, input_data, trials=100):
     print(f'Test for: {input_data}')
@@ -256,8 +254,8 @@ def test_correctness(encoder, decoder, k, b, input_data, trials=100):
 
     for _ in range(trials):
         transmitted = error_burst(encoded, b)
-        decoded = decoder(transmitted) 
-        output_data = blocks_to_utf8(decoded) 
+        decoded = decoder(transmitted)
+        output_data = blocks_to_utf8(decoded)
         assert input_data == output_data
     print('All good.')
 
@@ -270,46 +268,48 @@ def plain_cyclic():
     par_check_matrix = build_parity_check_matrix(n, k, generator)
 
     encoder = lambda data_blocks: encode(data_blocks, gen_matrix)
-    decoder = lambda transmitted: decode(transmitted, par_check_matrix, b)
+    decoder = lambda transmitted: decode(transmitted, par_check_matrix, n, k, b)
 
     test_correctness(encoder, decoder, k, b, input_data)
 
 
 def rds():
     # original code is (341, 331), shortened (26, 16)
-    # yeah, so we have to pretend that inputs are from 341-dimensional space with initial posiitons zeroed out
+    # yeah, so we have to pretend that inputs are from 341-dimensional space with initial positions zeroed out
     # i.e. multiplied by x^325 or sth
     b = 5
-    k = 16
+    k_0 = 16
     n_0 = 26
+    n = 341
+    k = n - (n_0 - k_0)
     pm = build_parity_check_matrix(341, 331, spec_generator_poly)
-    
-    # pm_shortened = build_parity_check_matrix(26, 16, spec_generator_poly)
-    # pm_rolled = np.roll(pm, 331, axis=0)  # unit matrix to the bottom
-    # pm_shortened = np.vstack([pm[:26, :], pm[315:, :]])
-     
+    # select rows corresponding to x_0, x_1, ..., x_n_0-1 and x_n-n_0, ..., x_n coefficients in modulo division
+    # (all others are always zero in decoding algorithm)
+    pm_shortened = np.vstack([pm[:n_0, :], pm[-n_0:, :]])
+
     data_blocks = utf8_to_blocks(input_data)
     assert blocks_to_utf8(data_blocks) == input_data
-    
-    encoded = encode(data_blocks, spec_generator_matrix)
-    assert np.array_equal(decode_reverse(encoded, pm, n_0, b), data_blocks)
 
-    transmitted = error_burst(encoded, b)  # RDS should detect and correct bursts of length up to 5 bits
-    decoded = decode_reverse(transmitted, pm, n_0, b) 
-    output_data = blocks_to_utf8(decoded) 
+    encoded_blocks = encode(data_blocks, spec_generator_matrix)
+    # inversion is necessary due to generator matrix assumptions
+    decoded_blocks = decode_shortened(encoded_blocks[:, ::-1], pm_shortened, n, n_0, k, b)[:, ::-1]
+    assert np.array_equal(decoded_blocks, data_blocks)
+
+    transmitted = error_burst(encoded_blocks, b)  # RDS should detect and correct bursts of length up to 5 bits
+    decoded = decode_shortened(transmitted[:, ::-1], pm_shortened, n, n_0, k, b)[:, ::-1]
+    output_data = blocks_to_utf8(decoded)
 
     print(output_data)
     assert input_data == output_data
 
     encoder = lambda data_blocks: encode(data_blocks, spec_generator_matrix)
-    decoder = lambda transmitted: decode_reverse(transmitted, pm, n_0, b)
+    decoder = lambda transmitted: decode_shortened(transmitted[:, ::-1], pm_shortened, n, n_0, k, b)[:, ::-1]
 
-    test_correctness(encoder, decoder, k, b, input_data, trials=1000)
+    test_correctness(encoder, decoder, k_0, b, input_data, trials=10000)
 
     print(f'Hell yeah!')
 
 
 if __name__ == '__main__':
-    # plain_cyclic()
+    plain_cyclic()
     rds()
-
