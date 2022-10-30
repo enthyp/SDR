@@ -245,9 +245,6 @@ def build_parity_check_matrix(n, k, generator_polynomial):
     return np.vstack(rows)
 
 
-rds_parity_check_matrix = build_parity_check_matrix(26, 16, spec_generator_poly)
-
-
 def test_correctness(encoder, decoder, k, b, input_data, trials=100):
     print(f'Test for: {input_data}')
     data_blocks = utf8_to_blocks(input_data, block_length=k)
