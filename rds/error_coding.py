@@ -196,26 +196,27 @@ def decode(blocks, parity_check_matrix, n, k, b):
 def decode_shortened(blocks, parity_check_matrix, n, n_0, k, b):
     # return binary array with errors corrected and check vectors removed
 
-    padded_blocks = np.pad(blocks, ((0, 0), (n_0, 0)), 'constant')
+    padded_blocks = np.pad(blocks, ((0, 0), (0, n_0)), 'constant')
     corrected_rows = []
+
     for block in padded_blocks:
         for i in range(n_0 + 1):
-            shift_block = np.roll(block, i)
+            shift_block = np.roll(block, -i)
             syndrome = np.matmul(shift_block, parity_check_matrix) % 2
 
             # check if syndrome is now a correctable short burst
-            if np.all(syndrome == 0) or (syndrome[0] == 1 and np.all(syndrome[b:] == 0)):
+            if np.all(syndrome == 0) or (syndrome[-1] == 1 and np.all(syndrome[:-b] == 0)):
                 extended_syndrome = np.zeros(2 * n_0)
-                extended_syndrome[:n - k] = syndrome
-                corrected_block = np.roll((shift_block + extended_syndrome) % 2, -i)
-                if np.all(corrected_block[:n_0] == 0):
+                extended_syndrome[-(n - k):] = syndrome
+                corrected_block = np.roll((shift_block + extended_syndrome) % 2, i)
+                if np.all(corrected_block[-n_0:] == 0):
                     # we obtained a word from our shortened code
-                    corrected_rows.append(corrected_block[-n_0:])
+                    corrected_rows.append(corrected_block[:n_0])
                     break
         else:
             print('Failed to find correcting burst')
 
-    return np.vstack(corrected_rows).astype(np.uint8)[:, -n_0 + (n - k):]  # strip zero padding and check bits
+    return np.vstack(corrected_rows).astype(np.uint8)[:, :n_0 - (n - k)]  # strip zero padding and check bits
 
 
 # k x n
@@ -238,10 +239,13 @@ def build_parity_check_matrix(n, k, generator_polynomial):
     for i in range(n - k, n):
         dividend = [0] * (i + 1)
         dividend[-1] = 1
-        _, remainder = divide_mod2(dividend, generator_polynomial)
+        _, remainder = divide_mod2(dividend, generator_polynomial)  # x^i mod g(x)
         rows.append(remainder)
 
     return np.vstack(rows)
+
+
+rds_parity_check_matrix = build_parity_check_matrix(26, 16, spec_generator_poly)
 
 
 def test_correctness(encoder, decoder, k, b, input_data, trials=100):
@@ -285,25 +289,25 @@ def rds():
     pm = build_parity_check_matrix(341, 331, spec_generator_poly)
     # select rows corresponding to x_0, x_1, ..., x_n_0-1 and x_n-n_0, ..., x_n coefficients in modulo division
     # (all others are always zero in decoding algorithm)
-    pm_shortened = np.vstack([pm[:n_0, :], pm[-n_0:, :]])
+    # inversion - because RDS assumes the highest powers in polynomial come first
+    pm_shortened = np.vstack([pm[:n_0, :], pm[-n_0:, :]])[::-1, ::-1]
 
     data_blocks = utf8_to_blocks(input_data)
     assert blocks_to_utf8(data_blocks) == input_data
 
     encoded_blocks = encode(data_blocks, spec_generator_matrix)
-    # inversion is necessary due to generator matrix assumptions
-    decoded_blocks = decode_shortened(encoded_blocks[:, ::-1], pm_shortened, n, n_0, k, b)[:, ::-1]
+    decoded_blocks = decode_shortened(encoded_blocks, pm_shortened, n, n_0, k, b)
     assert np.array_equal(decoded_blocks, data_blocks)
 
     transmitted = error_burst(encoded_blocks, b)  # RDS should detect and correct bursts of length up to 5 bits
-    decoded = decode_shortened(transmitted[:, ::-1], pm_shortened, n, n_0, k, b)[:, ::-1]
+    decoded = decode_shortened(transmitted, pm_shortened, n, n_0, k, b)
     output_data = blocks_to_utf8(decoded)
 
     print(output_data)
     assert input_data == output_data
 
     encoder = lambda data_blocks: encode(data_blocks, spec_generator_matrix)
-    decoder = lambda transmitted: decode_shortened(transmitted[:, ::-1], pm_shortened, n, n_0, k, b)[:, ::-1]
+    decoder = lambda transmitted: decode_shortened(transmitted, pm_shortened, n, n_0, k, b)
 
     test_correctness(encoder, decoder, k_0, b, input_data, trials=10000)
 
@@ -311,5 +315,5 @@ def rds():
 
 
 if __name__ == '__main__':
-    plain_cyclic()
+    # plain_cyclic()
     rds()
