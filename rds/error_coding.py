@@ -197,7 +197,7 @@ def decode_shortened(blocks, parity_check_matrix, n, n_0, k, b):
     # return binary array with errors corrected and check vectors removed
 
     padded_blocks = np.pad(blocks, ((0, 0), (0, n_0)), 'constant')
-    corrected_rows = []
+    decoded_rows = []
 
     for block in padded_blocks:
         for i in range(n_0 + 1):
@@ -211,12 +211,13 @@ def decode_shortened(blocks, parity_check_matrix, n, n_0, k, b):
                 corrected_block = np.roll((shift_block + extended_syndrome) % 2, i)
                 if np.all(corrected_block[-n_0:] == 0):
                     # we obtained a word from our shortened code
-                    corrected_rows.append(corrected_block[:n_0])
+                    # strip zero padding and check bits
+                    decoded_rows.append(corrected_block[:n_0 - (n - k)].astype(np.uint8))
                     break
         else:
-            print('Failed to find correcting burst')
+            decoded_rows.append(None)  # which means error...
 
-    return np.vstack(corrected_rows).astype(np.uint8)[:, :n_0 - (n - k)]  # strip zero padding and check bits
+    return decoded_rows
 
 
 # k x n
@@ -298,13 +299,13 @@ def rds():
 
     transmitted = error_burst(encoded_blocks, b)  # RDS should detect and correct bursts of length up to 5 bits
     decoded = decode_shortened(transmitted, pm_shortened, n, n_0, k, b)
-    output_data = blocks_to_utf8(decoded)
+    output_data = blocks_to_utf8(np.vstack(decoded))
 
     print(output_data)
     assert input_data == output_data
 
     encoder = lambda data_blocks: encode(data_blocks, spec_generator_matrix)
-    decoder = lambda transmitted: decode_shortened(transmitted, pm_shortened, n, n_0, k, b)
+    decoder = lambda transmitted: np.vstack(decode_shortened(transmitted, pm_shortened, n, n_0, k, b))
 
     test_correctness(encoder, decoder, k_0, b, input_data, trials=10000)
 

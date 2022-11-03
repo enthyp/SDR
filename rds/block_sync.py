@@ -8,7 +8,8 @@
 import numpy as np
 from itertools import cycle
 
-from error_coding import build_parity_check_matrix, spec_generator_matrix, spec_generator_poly, encode, utf8_to_blocks
+from error_coding import (build_parity_check_matrix, decode_shortened, encode, spec_generator_matrix,
+                          spec_generator_poly, blocks_to_utf8, utf8_to_blocks)
 
 
 # one for syndrome calculation and sync, the other for actual decoding
@@ -22,7 +23,7 @@ offset_words = np.pad(
         [0, 0, 1, 1, 1, 1, 1, 1, 0, 0, ],  # A
         [0, 1, 1, 0, 0, 1, 1, 0, 0, 0, ],  # B
         [0, 1, 0, 1, 1, 0, 1, 0, 0, 0, ],  # C
-        [1, 1, 0, 1, 0, 1, 0, 0, 0, 0, ],  # C'
+        # [1, 1, 0, 1, 0, 1, 0, 0, 0, 0, ],  # C'
         [0, 1, 1, 0, 1, 1, 0, 1, 0, 0, ],  # D
     ]),
     ((0, 0), (16, 0)),
@@ -38,20 +39,25 @@ def lookup_syndrome(syndrome):
             return word_symbol
     return None
 
+
 word_to_offset = {
     'A': 0, 'B': 26, 'C': 52, 'Cp': 52, 'D': 78
 }
+
 offset_to_words = {
     0: {'A'}, 26: {'B'}, 52: {'C', 'Cp'}, 78: {'D'}
 }
+
 
 def find_predecessors(word_symbol):
     offset = word_to_offset[word_symbol]
     return offset_to_words[(offset - 26) % 104]
 
+
 def find_next_group_shift(word_symbol):
     offset = word_to_offset[word_symbol]
-    return 104 - offset
+    return (104 - offset) % 104
+
 
 # TODO: probably turn it into RadioText encoding?
 # produce bit sequence of subsequent 104-bit blocks
@@ -81,7 +87,7 @@ class Decoder:
         self.decoding_start = 0
 
         # decoding
-        self.errors_per_block = 0
+        self.error_blocks = 0
         self.prev_bit_arr = np.array([])
 
     def decode(self, bit_arr):
@@ -112,17 +118,39 @@ class Decoder:
             if self.in_sync:
                 # current and (current - 26) are correct offset words - start looking from the earlier one
                 shift = find_next_group_shift(self.prev_offset_words[(self.current_offset - 26) % self.prev_offsets_size])
-                if i + shift >= len(bit_arr):
-                    # next call to decode method will do the decoding, this one has no data yet
-                    self.decoding_start = i + shift - len(bit_arr)
-                    return
-                else:
-                    self.decoding_start = i + shift
+                self.decoding_start = i - 26 + shift
+            else:
+                return
 
         # now we can start decoding the data and accumulating potential errors
+        # todo: what if at this point still decoding_start >= len(bit_arr)?
+        # let's add data from previous decoding call (if any)
+        bit_arr = np.hstack([self.prev_bit_arr, bit_arr])
+        self.prev_bit_arr = np.array([])
 
+        if self.decoding_start >= len(bit_arr):
+            self.decoding_start -= len(bit_arr)
+            return
 
-        return self.current_offset
+        if len(bit_arr) - self.decoding_start < 104:
+            self.prev_bit_arr = bit_arr[self.decoding_start:]
+            self.decoding_start = 0
+            return
+
+        decoding_rem = (len(bit_arr) - self.decoding_start) % 104  # we want to decode full groups here already
+        self.prev_bit_arr = bit_arr[-decoding_rem:]
+        self.decoding_start = 0
+
+        # todo: add syndromes before decoding!
+        # todo: C vs C' - distinguish by 2nd group?
+        row_blocks = np.reshape(bit_arr[:len(bit_arr) - decoding_rem], (-1, 26))
+        offsets = np.vstack([offset_words] * (len(row_blocks) // len(offset_words)))
+
+        decoded = decode_shortened((row_blocks + offsets) % 2, pc_decoding_matrix, 341, 26, 331, 5)
+        self.error_blocks += sum(1 for row in decoded if row is None)
+
+        # todo: decode group data
+        return decoded
 
 
 def main():
@@ -132,8 +160,9 @@ def main():
 
     bits = encode_groups(input_data)
     err_bits = errors(bits)
-    offset = decoder.decode(err_bits)
-    print(offset)
+    decoded_blocks = decoder.decode(err_bits)
+    output = blocks_to_utf8(np.vstack(decoded_blocks))
+    print(output)
 
 
 if __name__ == '__main__':
