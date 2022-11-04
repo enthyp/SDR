@@ -111,39 +111,9 @@ class Decoder:
         #   3. DECODE: decode as many groups as can fit bit_arr (accumulate decoding errors)
         #   4. SAVE: if non-decoded bits of bit_arr remain - store them for the next decoding round
 
-        # todo: could be done more often
-        if sum(self.error_blocks) / self.error_blocks_size > 0.5:
-            # print('OUT OF SYNC')
-            self.in_sync = False
-            self.error_blocks = [False] * self.error_blocks_size
-
         if not self.in_sync:
-            # synchronize
-            i = 0
-            while i < len(bit_arr) - 26 and not self.in_sync:
-                syndrome = np.matmul(bit_arr[i:i + 26], pc_matrix) % 2
-                offset_word = lookup_syndrome(syndrome)
-                self.prev_offset_words[self.current_offset] = offset_word
-
-                if offset_word:
-                    # we check if previous offset words matched this one
-                    prev_offset_word = self.prev_offset_words[(self.current_offset - 26) % self.prev_offsets_size]
-                    correct_predecessors = find_predecessors(offset_word)
-                    if prev_offset_word in correct_predecessors:
-                        self.in_sync = True
-                        # print('IN SYNC')
-                        break
-
-                self.current_offset = (self.current_offset + 1) % self.prev_offsets_size
-                i += 1
-
-            # find group start
-            if self.in_sync:
-                # current and (current - 26) are correct offset words
-                # looking from current because it should be in bit_arr
-                shift = find_next_group_shift(self.prev_offset_words[self.current_offset])
-                self.decoding_start = i + shift
-            else:
+            self._synchronize(bit_arr)
+            if not self.in_sync:
                 return
 
         # now we can start decoding the data and accumulating potential errors
@@ -162,13 +132,46 @@ class Decoder:
 
         decoding_rem = (len(bit_arr) - self.decoding_start) % 104  # we want to decode full groups here already
         self.prev_bit_arr = bit_arr[len(bit_arr) - decoding_rem:]
-        self.decoding_start = 0
+        self.decoding_start, decoding_start = 0, self.decoding_start
 
-        groups = self.decode_groups(np.reshape(bit_arr[self.decoding_start:len(bit_arr) - decoding_rem], (-1, 26)))
+        groups = self.decode_groups(bit_arr[decoding_start:len(bit_arr) - decoding_rem])
+        # sync might have been lost
+        if not self.in_sync:
+            self.prev_bit_arr = np.array([])
+            # recursion might really suck here but it's simple
+            groups.extend(self.decode(bit_arr[self.decoding_start + 104 * len(groups):]))
+
         return groups
 
-    def decode_groups(self, blocks):
+    def _synchronize(self, bit_arr):
+        i = 0
+        while i < len(bit_arr) - 26 and not self.in_sync:
+            syndrome = np.matmul(bit_arr[i:i + 26], pc_matrix) % 2
+            offset_word = lookup_syndrome(syndrome)
+            self.prev_offset_words[self.current_offset] = offset_word
+
+            if offset_word:
+                # we check if previous offset words matched this one
+                prev_offset_word = self.prev_offset_words[(self.current_offset - 26) % self.prev_offsets_size]
+                correct_predecessors = find_predecessors(offset_word)
+                if prev_offset_word in correct_predecessors:
+                    self.in_sync = True
+                    print('IN SYNC')
+                    break
+
+            self.current_offset = (self.current_offset + 1) % self.prev_offsets_size
+            i += 1
+
+        # find group start
+        if self.in_sync:
+            # current and (current - 26) are correct offset words
+            # looking from current because it should be in bit_arr
+            shift = find_next_group_shift(self.prev_offset_words[self.current_offset])
+            self.decoding_start = i + shift
+
+    def decode_groups(self, bit_arr):
         # no vectorization, it's Python anyway
+        blocks = np.reshape(bit_arr, (-1, 26))
         groups = []
 
         for group_ind in range(len(blocks) // 4):
@@ -184,6 +187,12 @@ class Decoder:
                 c_group = None
             d_group = self._decode_block(blocks[4 * group_ind + 3], offset_words[4])
             groups.append([a_group, b_group, c_group, d_group])
+
+            if sum(self.error_blocks) / self.error_blocks_size > 0.5:
+                print('LOST SYNC')
+                self.in_sync = False
+                self.error_blocks = [False] * self.error_blocks_size
+                break
 
         return groups
 
@@ -213,18 +222,22 @@ class Decoder:
         self.current_error_blocks = (self.current_error_blocks + 1) % self.error_blocks_size
 
 
-def main():
-    input_data = """This is a test piece of text. It's supposed to be encoded the same as it would be by an RDS 
-    transmitter and then decoded as if by an RDS receiver."""
+def test1(input_data):
     decoder = Decoder()
 
-    bits = encode_groups(input_data)
-    # err_bits = errors(bits)
-    decoded_groups = decoder.decode(bits)
+    # kinda like a stream
+    bits = encode_groups(input_data + input_data)
+    err_bits = errors(bits)
+    decoded_groups = decoder.decode(err_bits)
 
     # test if single call works
-    output = blocks_to_utf8(np.vstack([block for group in decoded_groups for block in group]))
-    assert input_data == output
+    output = blocks_to_utf8(np.vstack([block for group in decoded_groups for block in group if block is not None]))
+    print(output)
+
+
+def test2(input_data):
+    bits = encode_groups(input_data + input_data)
+    decoder = Decoder()
 
     # test if decoding message split into multiple separate calls works
     cut = len(bits) // 3
@@ -235,7 +248,15 @@ def main():
     g3 = decoder.decode(bits[2 * cut:])
 
     output2 = blocks_to_utf8(np.vstack([block for group in g1 + g2 + g3 for block in group]))
-    assert input_data == output2
+    assert output2 in (input_data + input_data)
+
+
+def main():
+    input_data = """This is a test piece of text. It's supposed to be encoded the same as it would be by an RDS 
+    transmitter and then decoded as if by an RDS receiver."""
+
+    test1(input_data)
+    test2(input_data)
 
 
 if __name__ == '__main__':

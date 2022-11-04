@@ -144,7 +144,7 @@ def blocks_to_utf8(blocks):
     bit_arr = blocks.flatten()
     byte_arr = np.packbits(bit_arr)
     # for weird block length padding might not be full bytes
-    return byte_arr.tobytes().decode('utf8').strip('\x00')  # strip optional \x00 padding
+    return byte_arr.tobytes().decode('utf8', errors='ignore').strip('\x00')  # strip optional \x00 padding
 
 
 # IMPORTANT NOTE:
