@@ -6,16 +6,14 @@
 # "content in the offset register will not be interpreted as a burst of errors equal to or shorter than five bits
 # when rotated in the polynomial shift register" WTF does that mean and why should I care?
 import numpy as np
-from itertools import cycle
+import random as rnd
 
-from error_coding import (build_parity_check_matrix, decode_shortened, encode, spec_generator_matrix,
+from error_coding import (build_parity_check_matrix, encode, spec_generator_matrix,
                           spec_generator_poly, blocks_to_utf8, utf8_to_blocks)
 
 
 # one for syndrome calculation and sync, the other for actual decoding
 pc_matrix = build_parity_check_matrix(26, 16, spec_generator_poly)[::-1, ::-1]
-pm = build_parity_check_matrix(341, 331, spec_generator_poly)
-pc_decoding_matrix = np.vstack([pm[:26, :], pm[-26:, :]])[::-1, ::-1]
 
 # padded to length 26
 offset_words = np.pad(
@@ -23,7 +21,7 @@ offset_words = np.pad(
         [0, 0, 1, 1, 1, 1, 1, 1, 0, 0, ],  # A
         [0, 1, 1, 0, 0, 1, 1, 0, 0, 0, ],  # B
         [0, 1, 0, 1, 1, 0, 1, 0, 0, 0, ],  # C
-        # [1, 1, 0, 1, 0, 1, 0, 0, 0, 0, ],  # C'
+        [1, 1, 0, 1, 0, 1, 0, 0, 0, 0, ],  # C'
         [0, 1, 1, 0, 1, 1, 0, 1, 0, 0, ],  # D
     ]),
     ((0, 0), (16, 0)),
@@ -65,14 +63,24 @@ def encode_groups(input_data):
     data_blocks = utf8_to_blocks(input_data)
     encoded_blocks = encode(data_blocks, spec_generator_matrix)
     rows = encoded_blocks.shape[0]
-    for row_ind, offset_word in zip(range(rows), cycle(offset_words)):
+
+    for row_ind in range(rows):
+        # sucks
+        if row_ind % 4 == 2:
+            offset_word = offset_words[2] if encoded_blocks[row_ind - 1][4] == 0 else offset_words[3]
+        elif row_ind % 4 == 3:
+            offset_word = offset_words[4]
+        else:
+            offset_word = offset_words[row_ind % 4]
         encoded_blocks[row_ind, :] += offset_word
     return (encoded_blocks % 2).flatten()
 
 
 # TODO: add some bits, remove some bits to force Decoder to re-sync
 def errors(bits):
-    return bits
+    # insert random additional bit
+    cut = rnd.randint(0, len(bits) // 2)
+    return np.hstack([bits[:cut], np.array([1]), bits[cut:]])
 
 
 class Decoder:
@@ -87,7 +95,13 @@ class Decoder:
         self.decoding_start = 0
 
         # decoding
-        self.error_blocks = 0
+        pm = build_parity_check_matrix(341, 331, spec_generator_poly)
+        self.decoding_matrix = np.vstack([pm[:26, :], pm[-26:, :]])[::-1, ::-1]
+
+        # todo: just implement cyclic buffer?
+        self.current_error_blocks = 0
+        self.error_blocks_size = 5
+        self.error_blocks = [False] * self.error_blocks_size
         self.prev_bit_arr = np.array([])
 
     def decode(self, bit_arr):
@@ -96,6 +110,13 @@ class Decoder:
         #   2. SHIFT: shift to beginning of the next group (might not be in bit_arr!)
         #   3. DECODE: decode as many groups as can fit bit_arr (accumulate decoding errors)
         #   4. SAVE: if non-decoded bits of bit_arr remain - store them for the next decoding round
+
+        # todo: could be done more often
+        if sum(self.error_blocks) / self.error_blocks_size > 0.5:
+            # print('OUT OF SYNC')
+            self.in_sync = False
+            self.error_blocks = [False] * self.error_blocks_size
+
         if not self.in_sync:
             # synchronize
             i = 0
@@ -106,9 +127,11 @@ class Decoder:
 
                 if offset_word:
                     # we check if previous offset words matched this one
+                    prev_offset_word = self.prev_offset_words[(self.current_offset - 26) % self.prev_offsets_size]
                     correct_predecessors = find_predecessors(offset_word)
-                    if self.prev_offset_words[(self.current_offset - 26) % self.prev_offsets_size] in correct_predecessors:
+                    if prev_offset_word in correct_predecessors:
                         self.in_sync = True
+                        # print('IN SYNC')
                         break
 
                 self.current_offset = (self.current_offset + 1) % self.prev_offsets_size
@@ -116,21 +139,21 @@ class Decoder:
 
             # find group start
             if self.in_sync:
-                # current and (current - 26) are correct offset words - start looking from the earlier one
-                shift = find_next_group_shift(self.prev_offset_words[(self.current_offset - 26) % self.prev_offsets_size])
-                self.decoding_start = i - 26 + shift
+                # current and (current - 26) are correct offset words
+                # looking from current because it should be in bit_arr
+                shift = find_next_group_shift(self.prev_offset_words[self.current_offset])
+                self.decoding_start = i + shift
             else:
                 return
 
         # now we can start decoding the data and accumulating potential errors
-        # todo: what if at this point still decoding_start >= len(bit_arr)?
-        # let's add data from previous decoding call (if any)
-        bit_arr = np.hstack([self.prev_bit_arr, bit_arr])
-        self.prev_bit_arr = np.array([])
-
         if self.decoding_start >= len(bit_arr):
             self.decoding_start -= len(bit_arr)
             return
+
+        # let's add data from previous decoding call (if any)
+        bit_arr = np.hstack([self.prev_bit_arr, bit_arr])
+        self.prev_bit_arr = np.array([])
 
         if len(bit_arr) - self.decoding_start < 104:
             self.prev_bit_arr = bit_arr[self.decoding_start:]
@@ -138,19 +161,56 @@ class Decoder:
             return
 
         decoding_rem = (len(bit_arr) - self.decoding_start) % 104  # we want to decode full groups here already
-        self.prev_bit_arr = bit_arr[-decoding_rem:]
+        self.prev_bit_arr = bit_arr[len(bit_arr) - decoding_rem:]
         self.decoding_start = 0
 
-        # todo: add syndromes before decoding!
-        # todo: C vs C' - distinguish by 2nd group?
-        row_blocks = np.reshape(bit_arr[:len(bit_arr) - decoding_rem], (-1, 26))
-        offsets = np.vstack([offset_words] * (len(row_blocks) // len(offset_words)))
+        groups = self.decode_groups(np.reshape(bit_arr[self.decoding_start:len(bit_arr) - decoding_rem], (-1, 26)))
+        return groups
 
-        decoded = decode_shortened((row_blocks + offsets) % 2, pc_decoding_matrix, 341, 26, 331, 5)
-        self.error_blocks += sum(1 for row in decoded if row is None)
+    def decode_groups(self, blocks):
+        # no vectorization, it's Python anyway
+        groups = []
 
-        # todo: decode group data
-        return decoded
+        for group_ind in range(len(blocks) // 4):
+            a_group = self._decode_block(blocks[4 * group_ind], offset_words[0])
+            b_group = self._decode_block(blocks[4 * group_ind + 1], offset_words[1])
+
+            if b_group is not None:
+                # C in version A or C' in version B
+                c_word = offset_words[2] if b_group[4] == 0 else offset_words[3]
+                c_group = self._decode_block(blocks[4 * group_ind + 2], c_word)
+            else:
+                # could decode it in 2 trials
+                c_group = None
+            d_group = self._decode_block(blocks[4 * group_ind + 3], offset_words[4])
+            groups.append([a_group, b_group, c_group, d_group])
+
+        return groups
+
+    def _decode_block(self, block, offset_word):
+        padded_block = np.pad((block + offset_word) % 2, (0, 26), 'constant')
+
+        for i in range(27):
+            shift_block = np.roll(padded_block, -i)
+            syndrome = np.matmul(shift_block, self.decoding_matrix) % 2
+
+            # check if syndrome is now a correctable short burst
+            if np.all(syndrome == 0) or (syndrome[-1] == 1 and np.all(syndrome[:-5] == 0)):
+                extended_syndrome = np.zeros(52)
+                extended_syndrome[-10:] = syndrome
+                corrected_block = np.roll((shift_block + extended_syndrome) % 2, i)
+                if np.all(corrected_block[-26:] == 0):
+                    # we obtained a word from our shortened code
+                    # strip zero padding and check bits
+                    self._update_errors(False)
+                    return corrected_block[:16].astype(np.uint8)
+        else:
+            self._update_errors(True)
+            return None  # which means error...
+
+    def _update_errors(self, is_error):
+        self.error_blocks[self.current_error_blocks] = is_error
+        self.current_error_blocks = (self.current_error_blocks + 1) % self.error_blocks_size
 
 
 def main():
@@ -159,10 +219,23 @@ def main():
     decoder = Decoder()
 
     bits = encode_groups(input_data)
-    err_bits = errors(bits)
-    decoded_blocks = decoder.decode(err_bits)
-    output = blocks_to_utf8(np.vstack(decoded_blocks))
-    print(output)
+    # err_bits = errors(bits)
+    decoded_groups = decoder.decode(bits)
+
+    # test if single call works
+    output = blocks_to_utf8(np.vstack([block for group in decoded_groups for block in group]))
+    assert input_data == output
+
+    # test if decoding message split into multiple separate calls works
+    cut = len(bits) // 3
+    assert cut % 104 != 0  # make sure it's not nice even splits
+
+    g1 = decoder.decode(bits[:cut])
+    g2 = decoder.decode(bits[cut:2 * cut])
+    g3 = decoder.decode(bits[2 * cut:])
+
+    output2 = blocks_to_utf8(np.vstack([block for group in g1 + g2 + g3 for block in group]))
+    assert input_data == output2
 
 
 if __name__ == '__main__':
