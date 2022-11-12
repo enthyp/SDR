@@ -2,6 +2,10 @@
 # 
 # Error-correcting codes related stuff.
 #
+# Best resource I've found on how cyclic and shortened cyclic codes work is "The Theory of Information and Coding" by R. J. McEliece, chapter 7 and 8.
+# Section 8.5 describes burst-error-trapping algorithm (for error correction using cyclic codes).
+# 
+#
 # Data flow:
 #  encoding:
 #   - input string
@@ -60,7 +64,7 @@
 #   - ...and HELL YEAH, it works 1000/1000 times, brilliant!
 #  
 #  25.10
-#   - tearing hear here really, it seems that I can't correct error burst of ANY length if it contains 1 on bit 25/50/75 etc.
+#   - tearing hair here really, it seems that I can't correct error burst of ANY length if it contains 1 on bit 25/50/75 etc.
 #     i.e. youngest bit of check bits
 #   - ...and I got it? I just didn't shift it by 26, by 0 to 25 so the youngest bit never moved over the right edge...
 #   - so now the only question remaining is: is it possible to make it more efficient than multiplications by the full length matrix?

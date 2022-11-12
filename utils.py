@@ -5,11 +5,10 @@ from scipy import signal
 from scipy.fftpack import fftshift
 
 
-def filter():
-    from scipy.signal import butter, lfilter
-    cutoff = 20000 / (150000 * 0.5)
-    b, a = butter(10, cutoff, btype='low', analog=False)
-    phase_diff_filt = lfilter(b, a, phase_diff)
+def lowpass(input_signal, sampling_freq=240000, cutoff_freq=16000):
+    cutoff = cutoff_freq / (240000 * 0.5)
+    b, a = signal.butter(10, cutoff, btype='low', analog=False)
+    return signal.lfilter(b, a, input_signal)
 
 
 def welch(samples, sample_rate, nper=1024, fsize=(20, 10)):
