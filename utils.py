@@ -32,11 +32,30 @@ def read_iq(f_name):
     return real_sample[::2] + 1j * real_sample[1::2]
 
 
+def read_iq_gqrx(f_name):
+    real_sample = np.fromfile(f_name, dtype=np.float32)
+    return real_sample[::2] + 1j * real_sample[1::2]
+    
+
+def frequency_shift(samples, offset, sample_rate):
+    t_s = np.linspace(0, len(samples) / sample_rate, len(samples))
+    return samples * np.exp(2 * np.pi * offset * t_s * 1j)
+
+
 def psd(signal, n_samples, offset=0):
   signal = signal[offset:offset + n_samples] * np.hamming(n_samples)
   fft = np.fft.fftshift(np.fft.fft(signal))
   norm_mag_fft = 1 / n_samples * np.abs(fft)
   return 20 * np.log10(norm_mag_fft)
+
+
+    
+def plot_signals(signals, start=0, width=None, figsize=(20, 10), normalize=True):
+    fig, ax = plt.subplots()
+    fig.set_size_inches(figsize)
+    for s in signals:
+        n_s = s / max(np.abs(s)) if normalize else s
+        ax.plot(n_s[start:-1 if width is None else start + width])
 
 
 def plot_psd(psd_samples, fs):
