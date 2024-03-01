@@ -5,8 +5,8 @@ from scipy import signal
 from scipy.fftpack import fftshift
 
 
-def lowpass(input_signal, sampling_freq=240000, cutoff_freq=16000):
-    cutoff = cutoff_freq / (240000 * 0.5)
+def lowpass(input_signal, sampling_freq, cutoff_freq):
+    cutoff = cutoff_freq / (sampling_freq * 0.5)
     b, a = signal.butter(10, cutoff, btype='low', analog=False)
     return signal.lfilter(b, a, input_signal)
 
@@ -63,6 +63,15 @@ def plot_psd(psd_samples, fs):
   plt.plot(f, psd_samples)
   plt.xlabel('Frequency [Hz]')
   plt.ylabel('PSD [dB]')
+
+
+def plot_correlations(correlations, start=0, width=None, max_indexes=None):
+    fig, ax = plt.subplots()
+    fig.set_size_inches((20, 10))
+    ax.plot(correlations[start:-1 if width is None else start + width])
+    if max_indexes is not None:
+        indexes_on_plot = list(filter(lambda idx: idx >= start and (True if width is None else idx <= start + width), max_indexes))
+        ax.plot(indexes_on_plot, [correlations[idx] for idx in indexes_on_plot], '*')
 
 
 # find best approximating indices in source for target values

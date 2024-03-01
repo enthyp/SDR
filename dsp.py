@@ -1,4 +1,5 @@
 import numpy as np
+from functools import reduce
 
 
 ##########
@@ -7,6 +8,40 @@ import numpy as np
 def fm_demod(iq_samples):
     # return same-length array
     return np.insert(np.angle(iq_samples[1:] * np.conj(iq_samples[:-1])), 0, 0)
+
+
+#######################
+# Frame synchronization
+#######################
+def frame_start_correlations(signal, sync_word, samples_per_symbol):
+    i = 0
+    correlations = []
+
+    while i + len(sync_word) * samples_per_symbol < len(signal):
+        j = i
+        potential_line = []
+        
+        for _ in range(len(sync_word)):
+            potential_line.append(signal[int(j)])
+            j += samples_per_symbol
+    
+        correlations.append(reduce(lambda acc, b: acc + b[0] * b[1], zip(potential_line, sync_word), 0))
+        i += 1
+    return np.array(correlations)
+
+
+def frame_start_correlations_vect(signal, sync_word, samples_per_symbol):
+    # it's possible to optimize with vector operations when samples_per_symbol is an integer (or sufficiently close to integer)
+    samples_per_symbol = int(samples_per_symbol)
+    correlations_size = sum(len(signal[i::samples_per_symbol]) - len(sync_word) + 1 for i in range(samples_per_symbol))
+    correlations = np.zeros(correlations_size)
+    
+    for i in range(samples_per_symbol):
+        signal_downsampled = signal[i::samples_per_symbol]
+        selected_correlations = np.convolve(signal_downsampled, sync_word, mode='valid')
+        correlations[i::samples_per_symbol] = selected_correlations
+    
+    return correlations
 
 
 ####################
