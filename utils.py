@@ -5,10 +5,15 @@ from scipy import signal
 from scipy.fftpack import fftshift
 
 
-def lowpass(input_signal, sampling_freq, cutoff_freq):
-    cutoff = cutoff_freq / (sampling_freq * 0.5)
-    b, a = signal.butter(10, cutoff, btype='low', analog=False)
+def lowpass(input_signal, sampling_freq_hz, cutoff_freq_hz, N=10):
+    b, a = signal.butter(N=N, Wn=cutoff_freq_hz, fs=sampling_freq_hz, btype='low', analog=False)
     return signal.lfilter(b, a, input_signal)
+
+
+def bandpass(input_signal, sampling_freq_hz, lower_freq_hz, upper_freq_hz, N=10):
+    b, a = signal.butter(N=N, Wn=[lower_freq_hz, upper_freq_hz], fs=sampling_freq_hz, btype='band', analog=False)
+    return signal.lfilter(b, a, input_signal)
+
 
 
 def welch(samples, sample_rate, nper=1024, fsize=(20, 10)):

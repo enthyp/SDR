@@ -30,7 +30,7 @@ def frame_start_correlations(signal, sync_word, samples_per_symbol):
     return np.array(correlations)
 
 
-def frame_start_correlations_vect(signal, sync_word, samples_per_symbol):
+def frame_start_correlations_vect(signal, sync_word, samples_per_symbol, relative=False):
     # it's possible to optimize with vector operations when samples_per_symbol is an integer (or sufficiently close to integer)
     samples_per_symbol = int(samples_per_symbol)
     correlations_size = sum(len(signal[i::samples_per_symbol]) - len(sync_word) + 1 for i in range(samples_per_symbol))
@@ -39,6 +39,8 @@ def frame_start_correlations_vect(signal, sync_word, samples_per_symbol):
     for i in range(samples_per_symbol):
         signal_downsampled = signal[i::samples_per_symbol]
         selected_correlations = np.convolve(signal_downsampled, sync_word, mode='valid')
+        if relative:
+            selected_correlations /= np.convolve(signal_downsampled ** 2, np.ones(len(sync_word)), mode='valid')
         correlations[i::samples_per_symbol] = selected_correlations
     
     return correlations
