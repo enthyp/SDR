@@ -61,7 +61,7 @@ def plot_signals(signals, start=0, width=None, figsize=(20, 10), normalize=True)
     for s in signals:
         n_s = s / max(np.abs(s)) if normalize else s
         ax.plot(n_s[start:-1 if width is None else start + width])
-
+    
 
 def plot_psd(psd_samples, fs):
   f = np.arange(-fs/2, fs/2, fs/len(psd_samples))
