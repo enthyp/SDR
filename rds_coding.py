@@ -81,7 +81,7 @@ def block_type_offset_word(block_type):
 def correct_block(block, offset_word):
     # pad to length 52
     padded_block = np.pad((block + offset_word) % 2, (0, 26), 'constant')
-
+    
     for i in range(27):
         shift_block = np.roll(padded_block, -i)
         syndrome = np.matmul(shift_block, decoding_matrix) % 2
