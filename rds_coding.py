@@ -97,10 +97,3 @@ def correct_block(block, offset_word):
                 return corrected_block[:16].astype(np.uint8)
     else:
         return None
-
-
-def decode_block(block, block_type):
-    if block_type == 'A':
-        
-    else:
-        return None
