@@ -137,6 +137,18 @@ class FieldOps(ABC):
     def mult(self, a, b):
         pass
 
+    def pow(self, a, p):
+        # could be implemented with an order of log(p) multiplications but who cares?
+        if p == 0:
+            return 1
+        if p < 0:
+            a = self.mult_inv(a)
+
+        result = a
+        for _ in range(abs(p) - 1):
+            result = self.mult(result, a)
+        return result
+    
     @abstractmethod
     def mult_inv(self, a):
         pass
@@ -265,12 +277,15 @@ def ff_for_primitive_polynomial(q, field, prim_p):
             return p2n([field.add_inv(a_i) for a_i in a_p])
 
         def mult(self, a, b):
+            if a == 0 or b == 0:
+                return 0
             pow_a, pow_b = num_to_power[a], num_to_power[b]
             pow_ab = (pow_a + pow_b) % mult_period
             return power_to_num[pow_ab]
 
         def mult_inv(self, a):
             # no messed up Euclideans this time, yay
+            # 0 not handled
             pow_a = num_to_power[a]
             return power_to_num[(-pow_a) % mult_period]
 
