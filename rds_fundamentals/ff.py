@@ -265,8 +265,9 @@ def ff_for_primitive_polynomial(q, field, prim_p):
     
     class Ops(FieldOps):
         def __init__(self):
-            # let's add this class property so that we can verify with the table in Appendix C
+            # let's add this class property so that we do verification and print field elements as powers
             self.power_to_num = power_to_num
+            self.num_to_power = num_to_power
 
         def add(self, a, b):
             a_p, b_p = n2p(a), n2p(b)
